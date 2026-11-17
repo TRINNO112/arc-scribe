@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#090b10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Arc Scribe • Web Novel Enactment Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Ambient Atmospheric Backdrops -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="app-container">
+    <!-- Top Studio Header -->
+    <header class="studio-header">
+      <div class="brand-group">
+        <div class="brand-crest">
+          <span class="crest-icon">✦</span>
+        </div>
+        <div class="brand-titles">
+          <h1 class="brand-name">ARC SCRIBE</h1>
+          <span class="brand-tagline">Novel Enactment & Voice Diarization</span>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <div class="status-pill" id="serverStatusPill">
+          <span class="pulse-dot"></span>
+          <span id="modelBadge">Gemini 3.5 Flash Lite</span>
+        </div>
+        <button class="icon-pill-btn" id="calibrationVaultBtn" title="Speaker Voice Calibration Vault">
+          <span class="pill-icon">🎙️</span>
+          <span class="pill-text">Voice Vault</span>
+          <span class="vault-indicator" id="vaultIndicator"></span>
+        </button>
+        <button class="icon-pill-btn" id="networkShareBtn" title="Share URL to Mobile Phone">
+          <span class="pill-icon">📱</span>
+          <span class="pill-text" id="networkIpText">Mobile Link</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Studio Grid -->
+    <main class="studio-grid">
+      <!-- Left Column: Story Arc & Character Deck -->
+      <section class="panel command-deck">
+        <div class="panel-header">
+          <span class="panel-icon">⚔️</span>
+          <h2>Scene & Character Setup</h2>
+        </div>
+
+        <div class="form-group">
+          <label for="arcTitleInput">Story Arc / Chapter Title</label>
+          <input type="text" id="arcTitleInput" class="custom-input" placeholder="e.g. Isekai Arc - The Citadel Confrontation" value="Arc 1 - The Midnight Confrontation">
+        </div>
+
+        <div class="form-group">
+          <label for="sceneContextInput">Setting & Narrative Context</label>
+          <textarea id="sceneContextInput" class="custom-textarea" rows="2" placeholder="Where does this scene happen? What is at stake?">Moonlit terrace of the ruined citadel. Blade drawn, high tension, suppressed fury.</textarea>
+        </div>
+
+        <!-- Dual Character Cast Cards -->
+        <div class="character-deck">
+          <!-- Speaker 1 Card -->
+          <div class="char-card speaker-1-card">
+            <div class="char-card-header">
+              <span class="speaker-tag spk-1-badge">SPEAKER 1</span>
+              <span class="char-avatar">🎭</span>
+            </div>
+            <div class="char-card-body">
+              <div class="input-row">
+                <input type="text" id="spk1Name" class="char-mini-input" placeholder="Real Name/Label" value="Author 1">
+                <span class="as-label">plays</span>
+                <input type="text" id="spk1Char" class="char-mini-input char-highlight" placeholder="Character Name" value="Lord Vane">
+              </div>
+              <input type="text" id="spk1Notes" class="char-sub-input" placeholder="Voice Notes (e.g. Deep baritone, cold, deliberate)" value="Deep baritone, deliberate, cold cadence">
+            </div>
+          </div>
+
+          <!-- Speaker 2 Card -->
+          <div class="char-card speaker-2-card">
+            <div class="char-card-header">
+              <span class="speaker-tag spk-2-badge">SPEAKER 2</span>
+              <span class="char-avatar">🗡️</span>
+            </div>
+            <div class="char-card-body">
+              <div class="input-row">
+                <input type="text" id="spk2Name" class="char-mini-input" placeholder="Real Name/Label" value="Author 2">
+                <span class="as-label">plays</span>
+                <input type="text" id="spk2Char" class="char-mini-input char-highlight" placeholder="Character Name" value="Ethan">
+              </div>
+              <input type="text" id="spk2Notes" class="char-sub-input" placeholder="Voice Notes (e.g. High register, fast tempo, breathless)" value="Higher pitch, rapid tempo, breathy defiance">
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile Safe Guard Info -->
+        <div class="mobile-guard-chip">
+          <span class="guard-icon">🛡️</span>
+          <div class="guard-text">
+            <strong>Local-First Storage Active:</strong> Audio slices commit to phone memory in real-time. Zero lost scenes if connection blinks.
+          </div>
+        </div>
+      </section>
+
+      <!-- Center / Primary Column: Theatrical Recording Deck -->
+      <section class="panel recording-sanctuary">
+        <div class="panel-header">
+          <span class="panel-icon">🎙️</span>
+          <h2>Theatrical Recording Deck</h2>
+          <div class="wake-shield" id="wakeShield" title="Screen WakeLock Active (Prevents Mobile Sleep)">
+            <span class="shield-dot"></span>
+            <span id="wakeText">WakeLock Ready</span>
+          </div>
+        </div>
+
+        <!-- Canvas Waveform Visualizer -->
+        <div class="visualizer-container">
+          <canvas id="waveformCanvas" width="800" height="180"></canvas>
+          <div class="visualizer-overlay" id="visualizerOverlay">
+            <div class="timer-display" id="recordingTimer">00:00</div>
+            <div class="recording-state-tag" id="recordingState">Standby • Ready to Enact</div>
+          </div>
+        </div>
+
+        <!-- Theatrical Controls -->
+        <div class="theatrical-controls">
+          <button class="action-btn record-btn" id="recordBtn">
+            <span class="btn-glow"></span>
+            <span class="btn-icon">●</span>
+            <span class="btn-label" id="recordBtnLabel">Start Enactment</span>
+          </button>
+          
+          <button class="action-btn secondary-btn" id="pauseBtn" disabled>
+            <span class="btn-icon">⏸</span>
+            <span class="btn-label">Pause</span>
+          </button>
+
+          <button class="action-btn finish-btn" id="finishBtn" disabled>
+            <span class="btn-icon">⚡</span>
+            <span class="btn-label">Finish & Scribe</span>
+          </button>
+        </div>
+
+        <!-- Processing Progress Overlay (Shown when Gemini is running) -->
+        <div class="processing-banner" id="processingBanner" style="display: none;">
+          <div class="scribe-spinner"></div>
+          <div class="processing-info">
+            <h4 id="processingStep">Gemini 3.5 Flash Lite is Scribing...</h4>
+            <p>Separating speaker voices, tagging emotional inflections, and drafting novel prose.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Scribe's Output Studio -->
+      <section class="panel output-studio">
+        <div class="studio-tabs">
+          <button class="tab-btn active" data-tab="scriptTab">
+            <span>🎭</span> Dialogue Script (<span id="dialogueCount">0</span>)
+          </button>
+          <button class="tab-btn" data-tab="proseTab">
+            <span>📖</span> Novel Prose Draft
+          </button>
+          <button class="tab-btn" data-tab="beatsTab">
+            <span>⚡</span> Scene Beats
+          </button>
+        </div>
+
+        <!-- Tab 1: Verbatim Dialogue Screenplay -->
+        <div class="tab-content active" id="scriptTab">
+          <div class="tab-toolbar">
+            <span class="toolbar-title">Verbatim Enactment Script</span>
+            <button class="copy-pill-btn" id="copyScriptBtn">📋 Copy Script</button>
+          </div>
+          <div class="script-scroll-area" id="scriptContainer">
+            <div class="empty-state">
+              <span class="empty-icon">📜</span>
+              <p>Hit <strong>Start Enactment</strong> and act out your scene with your brother.</p>
+              <span class="empty-sub">Your dialogues will appear here with character tags, vocal inflections, and stage cues.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Atmospheric Novel Prose Draft -->
+        <div class="tab-content" id="proseTab">
+          <div class="tab-toolbar">
+            <span class="toolbar-title">Chapter Prose Draft</span>
+            <button class="copy-pill-btn" id="copyProseBtn">📋 Copy Prose</button>
+          </div>
+          <div class="prose-scroll-area" id="proseContainer">
+            <div class="empty-state">
+              <span class="empty-icon">🖋️</span>
+              <p>Once you finish a scene, Arc Scribe will transform your raw roleplay into rich, atmospheric novel prose ready for your docx chapter.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Scene Beats Breakdown -->
+        <div class="tab-content" id="beatsTab">
+          <div class="tab-toolbar">
+            <span class="toolbar-title">Dramatic Tension & Beat Map</span>
+            <button class="copy-pill-btn" id="copyBeatsBtn">📋 Copy Beats</button>
+          </div>
+          <div class="beats-scroll-area" id="beatsContainer">
+            <div class="empty-state">
+              <span class="empty-icon">⚡</span>
+              <p>Scene beats and pacing analysis will appear here.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Voice Calibration Modal -->
+  <div class="modal-backdrop" id="calibrationModal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-crest">🎙️</span>
+          <div>
+            <h3>Sibling Voice Calibration Vault</h3>
+            <p>15-Second Guided Voice Enrollment for Zero Speaker Confusion</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeModalBtn">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-intro">
+          Because brothers share similar accents and vocal resonance, record a quick 15-second baseline voice sample for each speaker. Gemini uses these acoustic anchors to guarantee 98%+ attribution accuracy!
+        </p>
+
+        <!-- Speaker 1 Calibration Box -->
+        <div class="cal-box">
+          <div class="cal-box-header">
+            <span class="speaker-tag spk-1-badge" id="calSpk1Badge">SPEAKER 1</span>
+            <span class="cal-status" id="calSpk1Status">Not Enrolled</span>
+          </div>
+          <div class="cal-script">
+            "I am speaking in my natural cadence and normal register. This is my baseline voice signature for Arc Scribe scene recordings."
+          </div>
+          <div class="cal-actions">
+            <button class="cal-rec-btn" id="calRecBtn1">
+              <span class="btn-icon">●</span> Record 15s Sample
+            </button>
+            <span class="cal-timer" id="calTimer1">0:00 / 0:15</span>
+          </div>
+        </div>
+
+        <!-- Speaker 2 Calibration Box -->
+        <div class="cal-box">
+          <div class="cal-box-header">
+            <span class="speaker-tag spk-2-badge" id="calSpk2Badge">SPEAKER 2</span>
+            <span class="cal-status" id="calSpk2Status">Not Enrolled</span>
+          </div>
+          <div class="cal-script">
+            "I am the second speaker. My pitch, formant resonance, and vocal tempo serve as the counterpart acoustic reference anchor."
+          </div>
+          <div class="cal-actions">
+            <button class="cal-rec-btn" id="calRecBtn2">
+              <span class="btn-icon">●</span> Record 15s Sample
+            </button>
+            <span class="cal-timer" id="calTimer2">0:00 / 0:15</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network Share Modal -->
+  <div class="modal-backdrop" id="networkModal" style="display: none;">
+    <div class="modal-card mini-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-crest">📱</span>
+          <div>
+            <h3>Open on Smartphone</h3>
+            <p>Connect over your local home Wi-Fi network</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeNetworkModalBtn">✕</button>
+      </div>
+      <div class="modal-body text-center">
+        <p>Open this URL in <strong>Chrome (Android)</strong> or <strong>Safari (iPhone)</strong>:</p>
+        <div class="ip-display-box" id="modalMobileUrl">http://192.168.1.x:8000</div>
+        <button class="custom-submit-btn" id="copyUrlBtn">📋 Copy URL</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
