@@ -12,6 +12,7 @@ ENV/
 # Local Audio & Scene Exports
 recordings/
 exports/
+tests/fixtures/audio/
 
 # OS specific
 .DS_Store

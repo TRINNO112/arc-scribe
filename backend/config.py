@@ -8,6 +8,7 @@ load_dotenv(BASE_DIR / ".env")
 class Settings:
     PROJECT_NAME: str = "Arc Scribe"
     VERSION: str = "1.0.0"
+    BASE_DIR: Path = BASE_DIR
     
     # AI Studio Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")

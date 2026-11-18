@@ -1,0 +1,125 @@
+[
+  {
+    "scenario_id": "TC-HINGLISH-01",
+    "title": "Fast Hindi with English Tech Stack Terms",
+    "category": "hinglish",
+    "turns": [
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Bhai sun, maine backend me FastAPI ka sliding window rate limiter implement kar diya hai.",
+        "vocal_tone": "confident",
+        "timestamp": "0:02"
+      },
+      {
+        "speaker_id": "speaker_2",
+        "speaker": "Speaker 2",
+        "text": "Lekin agar client side pe IndexedDB chunks queue me atak gaye toh failover kaise handle hoga?",
+        "vocal_tone": "skeptical",
+        "timestamp": "0:08"
+      },
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Arre simple hai na, exponential backoff with jitter laga hai, direct route fail hua toh smart proxy switch marega.",
+        "vocal_tone": "calm",
+        "timestamp": "0:14"
+      }
+    ],
+    "audio_fixture": "D:\\Trinno\\arc-scribe\\tests\\fixtures\\audio\\TC-HINGLISH-01.webm"
+  },
+  {
+    "scenario_id": "TC-RAPID-05",
+    "title": "One-Word Ping-Pong Micro-Exchanges",
+    "category": "rapid_turn_taking",
+    "turns": [
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Kya?",
+        "vocal_tone": "hesitant",
+        "timestamp": "0:01"
+      },
+      {
+        "speaker_id": "speaker_2",
+        "speaker": "Speaker 2",
+        "text": "Nahi!",
+        "vocal_tone": "shouting",
+        "timestamp": "0:03"
+      },
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Kyun?",
+        "vocal_tone": "pleading",
+        "timestamp": "0:05"
+      },
+      {
+        "speaker_id": "speaker_2",
+        "speaker": "Speaker 2",
+        "text": "Bas!",
+        "vocal_tone": "deadpan",
+        "timestamp": "0:07"
+      },
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Sun to!",
+        "vocal_tone": "pleading",
+        "timestamp": "0:09"
+      },
+      {
+        "speaker_id": "speaker_2",
+        "speaker": "Speaker 2",
+        "text": "Bilkul nahi.",
+        "vocal_tone": "resigned",
+        "timestamp": "0:11"
+      }
+    ],
+    "audio_fixture": "D:\\Trinno\\arc-scribe\\tests\\fixtures\\audio\\TC-RAPID-05.webm"
+  },
+  {
+    "scenario_id": "TC-OVERLAP-09",
+    "title": "Hard Mid-Sentence Interruption",
+    "category": "overlapping_speech",
+    "turns": [
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Maine usko clear terms me samjha diya tha ki agar usne dubara yahan aane ki koshish ki toh—",
+        "vocal_tone": "furious",
+        "timestamp": "0:02"
+      },
+      {
+        "speaker_id": "speaker_2",
+        "speaker": "Speaker 2",
+        "text": "Tujhe kitni baar bola hai ki uske mamle me beech me mat bol!",
+        "vocal_tone": "shouting",
+        "timestamp": "0:05"
+      }
+    ],
+    "audio_fixture": "D:\\Trinno\\arc-scribe\\tests\\fixtures\\audio\\TC-OVERLAP-09.webm"
+  },
+  {
+    "scenario_id": "TC-EMOTION-13",
+    "title": "Stealth Infiltration Whisper",
+    "category": "emotional_extremes",
+    "turns": [
+      {
+        "speaker_id": "speaker_1",
+        "speaker": "Speaker 1",
+        "text": "Shh... aawaz mat kar. Wo gallery me patrol kar rahe hain.",
+        "vocal_tone": "whispering",
+        "timestamp": "0:02"
+      },
+      {
+        "speaker_id": "speaker_2",
+        "speaker": "Speaker 2",
+        "text": "Right side wala corridor clear hai, jump karein kya?",
+        "vocal_tone": "whispering",
+        "timestamp": "0:08"
+      }
+    ],
+    "audio_fixture": "D:\\Trinno\\arc-scribe\\tests\\fixtures\\audio\\TC-EMOTION-13.webm"
+  }
+]

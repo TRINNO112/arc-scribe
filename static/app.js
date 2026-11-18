@@ -934,6 +934,34 @@ async function checkNetworkInfo() {
   }
 }
 
+// Calibration Status
+async function checkCalibrationStatus() {
+  try {
+    const res = await fetch('/api/calibration/status');
+    if (res.ok) {
+      const data = await res.json();
+      const badge = document.getElementById('calibrationBadge');
+      const text = document.getElementById('calText');
+      if (!badge || !text) return;
+      if (data.fully_calibrated) {
+        badge.className = 'cal-badge locked';
+        text.textContent = 'ANCHORS LOCKED';
+        badge.title = 'Speaker 1 and Speaker 2 acoustic baseline anchors verified';
+      } else if (data.speaker_1_calibrated || data.speaker_2_calibrated) {
+        badge.className = 'cal-badge';
+        text.textContent = 'PARTIAL ANCHOR';
+        badge.title = 'Single acoustic anchor locked; relative contrast active';
+      } else {
+        badge.className = 'cal-badge';
+        text.textContent = 'UNCALIBRATED';
+        badge.title = 'No anchors found. Using relative diarization';
+      }
+    }
+  } catch (e) {
+    console.warn('Calibration status fetch error:', e);
+  }
+}
+
 // Event Bindings
 document.addEventListener('DOMContentLoaded', () => {
   // Recording triggers
@@ -989,5 +1017,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   checkNetworkInfo();
+  checkCalibrationStatus();
   loadHistoryList();
 });

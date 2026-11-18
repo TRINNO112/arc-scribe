@@ -145,6 +145,46 @@ html, body {
   color: var(--accent-emerald);
 }
 
+.cal-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cal-badge.locked {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.cal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--speaker-1-core);
+}
+
+.cal-badge.locked .cal-dot {
+  background: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald);
+}
+
+.cal-text {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--speaker-1-core);
+}
+
+.cal-badge.locked .cal-text {
+  color: var(--accent-emerald);
+}
+
 .nav-icon-btn {
   display: flex;
   align-items: center;

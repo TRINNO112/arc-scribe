@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.models import ProcessAudioResponse, CalibrationResponse, ServerStatusResponse
+from backend.models import ProcessAudioResponse, CalibrationResponse, ServerStatusResponse, CalibrationUploadResponse, SpeakerAcousticProfile
 from backend.gemini_service import gemini_service
 from backend.rate_limiter import rate_limiter
 
@@ -76,6 +76,123 @@ async def get_network_ip():
         "port": settings.PORT,
         "mobile_url": f"http://{ip}:{settings.PORT}",
     }
+
+# ==============================================================================
+# ACOUSTIC CALIBRATION ENDPOINTS
+# ==============================================================================
+
+@app.post("/api/calibration/{speaker_id}", response_model=CalibrationUploadResponse)
+async def upload_calibration_anchor(
+    speaker_id: str,
+    audio: UploadFile = File(..., description="15-second calibration audio recording"),
+    real_name: str = Form("Brother"),
+    character_counterpart: str = Form("Character"),
+    pitch_register: str = Form("Mid-range"),
+    timbre_description: str = Form("Natural speaking voice"),
+    speech_tempo: str = Form("Normal conversational pace"),
+    linguistic_quirks: str = Form("Hindi/Hinglish natural cadence")
+):
+    if speaker_id not in ("speaker_1", "speaker_2"):
+        raise HTTPException(status_code=400, detail="speaker_id must be 'speaker_1' or 'speaker_2'")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) < 2048:
+        raise HTTPException(status_code=400, detail="Calibration sample too short or empty (min 2KB required)")
+
+    # 1. Save Anchor WebM in recordings/calibration/
+    anchor_filename = f"{speaker_id}_anchor.webm"
+    anchor_path = settings.CALIBRATION_DIR / anchor_filename
+    with open(anchor_path, "wb") as f:
+        f.write(audio_bytes)
+
+    # 2. Update Calibration Manifest
+    manifest_path = settings.CALIBRATION_DIR / "calibration_manifest.json"
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+        except Exception:
+            manifest = {}
+
+    if "speakers" not in manifest:
+        manifest["speakers"] = {}
+
+    import hashlib
+    sha256 = hashlib.sha256(audio_bytes).hexdigest()
+
+    profile_data = {
+        "speaker_id": speaker_id,
+        "real_name": real_name,
+        "display_name": f"{real_name} ({speaker_id.replace('_', ' ').title()})",
+        "character_counterpart": character_counterpart,
+        "pitch_register": pitch_register,
+        "timbre_description": timbre_description,
+        "speech_tempo": speech_tempo,
+        "linguistic_quirks": linguistic_quirks,
+        "audio_filename": anchor_filename,
+        "duration_seconds": 15.0,
+        "file_size_bytes": len(audio_bytes),
+        "sha256_hash": sha256,
+        "calibrated_at": datetime.now().isoformat()
+    }
+
+    manifest["updated_at"] = datetime.now().isoformat()
+    manifest["speakers"][speaker_id] = profile_data
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+    return CalibrationUploadResponse(
+        success=True,
+        speaker_id=speaker_id,
+        message=f"Calibration anchor for {real_name} successfully locked.",
+        profile=SpeakerAcousticProfile(**profile_data)
+    )
+
+@app.get("/api/calibration/status")
+async def get_calibration_status():
+    manifest_path = settings.CALIBRATION_DIR / "calibration_manifest.json"
+    spk1_exists = (settings.CALIBRATION_DIR / "speaker_1_anchor.webm").exists()
+    spk2_exists = (settings.CALIBRATION_DIR / "speaker_2_anchor.webm").exists()
+
+    manifest_data = {}
+    if manifest_path.exists():
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest_data = json.load(f)
+        except Exception:
+            pass
+
+    return {
+        "speaker_1_calibrated": spk1_exists,
+        "speaker_2_calibrated": spk2_exists,
+        "fully_calibrated": spk1_exists and spk2_exists,
+        "manifest": manifest_data
+    }
+
+@app.delete("/api/calibration/{speaker_id}")
+async def reset_calibration(speaker_id: str):
+    if speaker_id not in ("speaker_1", "speaker_2"):
+        raise HTTPException(status_code=400, detail="Invalid speaker_id")
+    anchor_path = settings.CALIBRATION_DIR / f"{speaker_id}_anchor.webm"
+    if anchor_path.exists():
+        anchor_path.unlink()
+    
+    manifest_path = settings.CALIBRATION_DIR / "calibration_manifest.json"
+    if manifest_path.exists():
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            if "speakers" in manifest and speaker_id in manifest["speakers"]:
+                del manifest["speakers"][speaker_id]
+                manifest["updated_at"] = datetime.now().isoformat()
+                with open(manifest_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=2)
+        except Exception:
+            pass
+
+    return {"success": True, "message": f"Reset calibration for {speaker_id}"}
 
 # Audio playback endpoint
 @app.get("/api/recordings/{filename}")
