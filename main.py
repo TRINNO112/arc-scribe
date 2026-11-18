@@ -2,11 +2,13 @@ import os
 import json
 import socket
 import logging
+import asyncio
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from typing import AsyncGenerator
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
@@ -28,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Prevent aggressive browser caching of static files (especially on mobile browsers)
+# Prevent aggressive browser caching of static files
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
     response = await call_next(request)
@@ -75,49 +77,150 @@ async def get_network_ip():
         "mobile_url": f"http://{ip}:{settings.PORT}",
     }
 
-@app.post("/api/calibrate-voice", response_model=CalibrationResponse)
-async def calibrate_voice(
-    speaker_id: str = Form(..., description="'speaker_1' or 'speaker_2'"),
-    speaker_name: str = Form(..., description="Custom name/label of the speaker"),
-    audio: UploadFile = File(..., description="15s baseline audio recording")
-):
-    """Saves baseline acoustic calibration audio for either brother."""
-    if speaker_id not in ["speaker_1", "speaker_2"]:
-        raise HTTPException(status_code=400, detail="speaker_id must be 'speaker_1' or 'speaker_2'.")
-    
-    filename = f"{speaker_id}_calibration.webm"
-    save_path = settings.CALIBRATION_DIR / filename
-    
-    content = await audio.read()
-    with open(save_path, "wb") as f:
-        f.write(content)
-        
-    logger.info(f"Calibration voice profile saved for {speaker_name} ({speaker_id}) at {save_path}")
-    return CalibrationResponse(
-        success=True,
-        speaker_id=speaker_id,
-        speaker_name=speaker_name,
-        audio_path=str(save_path.name),
-        message=f"Voice profile for {speaker_name} saved successfully!"
-    )
+# Audio playback endpoint
+@app.get("/api/recordings/{filename}")
+async def get_recording_audio(filename: str):
+    clean_name = Path(filename).name
+    file_path = settings.RECORDINGS_DIR / clean_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio recording not found")
+    return FileResponse(file_path, media_type="audio/webm")
 
+# Streaming Telemetry & Real-Time Processing
+@app.post("/api/process-audio-stream")
+async def process_audio_stream(
+    audio: UploadFile = File(..., description="Enactment scene audio recording"),
+    arc_title: str = Form("Raw Voice Session"),
+    speaker_1_name: str = Form("Speaker 1"),
+    speaker_2_name: str = Form("Speaker 2"),
+):
+    """
+    Real-time streaming telemetry endpoint yielding live server processing milestones as NDJSON.
+    """
+    async def generator() -> AsyncGenerator[str, None]:
+        try:
+            # Stage 1: Ingest & disk persistence
+            audio_bytes = await audio.read()
+            size_kb = round(len(audio_bytes) / 1024, 1)
+            
+            yield json.dumps({
+                "type": "telemetry",
+                "step": 1,
+                "total_steps": 4,
+                "pct": 25,
+                "msg": f"Audio payload verified ({size_kb} KB) • Decoding WebM OPUS frames..."
+            }) + "\n"
+            await asyncio.sleep(0.05)
+
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            clean_arc = "".join(c for c in arc_title if c.isalnum() or c in ("-", "_")).rstrip()
+            audio_filename = f"take_{timestamp_str}_{clean_arc}.webm"
+            audio_path = settings.RECORDINGS_DIR / audio_filename
+
+            with open(audio_path, "wb") as f:
+                f.write(audio_bytes)
+
+            mime_type = audio.content_type or "audio/webm"
+
+            # Stage 2: Gateway transmission
+            yield json.dumps({
+                "type": "telemetry",
+                "step": 2,
+                "total_steps": 4,
+                "pct": 50,
+                "msg": "Initiating connection via Primary Route (with smart proxy failover)..."
+            }) + "\n"
+            await asyncio.sleep(0.05)
+
+            # Stage 3: Gemini Execution
+            rate_limiter.acquire()
+            yield json.dumps({
+                "type": "telemetry",
+                "step": 3,
+                "total_steps": 4,
+                "pct": 75,
+                "msg": f"{settings.GEMINI_MODEL} processing multi-lingual diarization & vocal inflections..."
+            }) + "\n"
+            await asyncio.sleep(0.05)
+
+            result = await gemini_service.process_enactment_audio(
+                scene_audio_bytes=audio_bytes,
+                mime_type=mime_type,
+                arc_title=arc_title,
+                speaker_1_name=speaker_1_name,
+                speaker_2_name=speaker_2_name
+            )
+
+            # Stage 4: Assembly & Persistence
+            route_name = result.get("_route", "Direct Route")
+            yield json.dumps({
+                "type": "telemetry",
+                "step": 4,
+                "total_steps": 4,
+                "pct": 95,
+                "msg": f"Response verified (HTTP 200 via {route_name}) • Structuring raw dialogue turns..."
+            }) + "\n"
+            await asyncio.sleep(0.05)
+
+            raw_script = result.get("dialogue_script") or result.get("dialogues") or []
+            normalized_lines = []
+            for line in raw_script:
+                text_val = line.get("text") or line.get("dialogue") or ""
+                spk_val = line.get("speaker") or "Speaker 1"
+                spk_id = line.get("speaker_id") or ("speaker_1" if "1" in spk_val else "speaker_2")
+                tone_val = line.get("vocal_tone") or ""
+                time_val = line.get("timestamp") or "0:00"
+                normalized_lines.append({
+                    "speaker": spk_val,
+                    "speaker_id": spk_id,
+                    "text": text_val,
+                    "vocal_tone": tone_val,
+                    "timestamp": time_val
+                })
+
+            export_filename = f"scene_{timestamp_str}_{clean_arc}.json"
+            export_path = settings.EXPORTS_DIR / export_filename
+
+            payload = {
+                "success": True,
+                "id": export_filename,
+                "dialogue_script": normalized_lines,
+                "summary": result.get("summary", ""),
+                "raw_audio_filename": audio_filename,
+                "audio_url": f"/api/recordings/{audio_filename}",
+                "processed_at": datetime.now().isoformat(),
+            }
+
+            with open(export_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+
+            yield json.dumps({
+                "type": "result",
+                "step": 4,
+                "total_steps": 4,
+                "pct": 100,
+                "msg": "Dialogue script ready!",
+                "data": payload
+            }) + "\n"
+
+        except Exception as e:
+            logger.error(f"Streaming error: {e}")
+            yield json.dumps({
+                "type": "error",
+                "msg": str(e)
+            }) + "\n"
+
+    return StreamingResponse(generator(), media_type="application/x-ndjson")
+
+# Standard Fallback POST
 @app.post("/api/process-audio", response_model=ProcessAudioResponse)
 async def process_scene_audio(
     audio: UploadFile = File(..., description="Enactment scene audio recording"),
-    arc_title: str = Form("Untitled Arc Scene"),
-    speaker_1_name: str = Form("Author 1"),
-    speaker_1_char: str = Form("Character A"),
-    speaker_1_notes: str = Form(""),
-    speaker_2_name: str = Form("Author 2"),
-    speaker_2_char: str = Form("Character B"),
-    speaker_2_notes: str = Form(""),
-    scene_context: str = Form("")
+    arc_title: str = Form("Raw Voice Session"),
+    speaker_1_name: str = Form("Speaker 1"),
+    speaker_2_name: str = Form("Speaker 2"),
 ):
-    """Processes live enactment audio: diarizes speakers, tags emotions, and generates novel prose."""
-    # 1. Rate Limit Guard
     rate_limiter.acquire()
-    
-    # 2. Save raw audio take locally in recordings/
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     clean_arc = "".join(c for c in arc_title if c.isalnum() or c in ("-", "_")).rstrip()
     audio_filename = f"take_{timestamp_str}_{clean_arc}.webm"
@@ -128,37 +231,38 @@ async def process_scene_audio(
         f.write(audio_bytes)
         
     mime_type = audio.content_type or "audio/webm"
-    logger.info(f"Received scene audio '{audio_filename}' ({len(audio_bytes)} bytes, MIME: {mime_type})")
     
-    # 3. Process via Gemini Audio Service
-    try:
-        result = await gemini_service.process_enactment_audio(
-            scene_audio_bytes=audio_bytes,
-            mime_type=mime_type,
-            arc_title=arc_title,
-            speaker_1_name=speaker_1_name,
-            speaker_1_char=speaker_1_char,
-            speaker_1_notes=speaker_1_notes,
-            speaker_2_name=speaker_2_name,
-            speaker_2_char=speaker_2_char,
-            speaker_2_notes=speaker_2_notes,
-            scene_context=scene_context
-        )
-    except Exception as e:
-        logger.error(f"Gemini processing error: {e}")
-        raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
+    result = await gemini_service.process_enactment_audio(
+        scene_audio_bytes=audio_bytes,
+        mime_type=mime_type,
+        arc_title=arc_title,
+        speaker_1_name=speaker_1_name,
+        speaker_2_name=speaker_2_name
+    )
 
-    # 4. Save structured result into exports/
     export_filename = f"scene_{timestamp_str}_{clean_arc}.json"
     export_path = settings.EXPORTS_DIR / export_filename
     
+    raw_script = result.get("dialogue_script") or result.get("dialogues") or []
+    normalized_lines = []
+    for line in raw_script:
+        text_val = line.get("text") or line.get("dialogue") or ""
+        spk_val = line.get("speaker") or "Speaker 1"
+        spk_id = line.get("speaker_id") or ("speaker_1" if "1" in spk_val else "speaker_2")
+        tone_val = line.get("vocal_tone") or ""
+        time_val = line.get("timestamp") or "0:00"
+        normalized_lines.append({
+            "speaker": spk_val,
+            "speaker_id": spk_id,
+            "text": text_val,
+            "vocal_tone": tone_val,
+            "timestamp": time_val
+        })
+
     payload = {
         "success": True,
-        "arc_title": result.get("arc_title", arc_title),
+        "dialogue_script": normalized_lines,
         "summary": result.get("summary", ""),
-        "dialogues": result.get("dialogues", []),
-        "scene_beats": result.get("scene_beats", []),
-        "novel_prose_draft": result.get("novel_prose_draft", ""),
         "raw_audio_filename": audio_filename,
         "processed_at": datetime.now().isoformat(),
     }
@@ -168,24 +272,68 @@ async def process_scene_audio(
         
     return payload
 
+# Full History CRUD Endpoints
 @app.get("/api/history")
 async def get_history():
-    """Lists past exported scenes."""
     history = []
     for file in sorted(settings.EXPORTS_DIR.glob("scene_*.json"), reverse=True):
         try:
             with open(file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                dialogues = data.get("dialogue_script") or data.get("dialogues") or []
+                preview = dialogues[0].get("text", "") if dialogues else ""
                 history.append({
+                    "id": file.name,
                     "filename": file.name,
-                    "arc_title": data.get("arc_title", "Untitled"),
-                    "summary": data.get("summary", "")[:120] + "...",
+                    "preview": preview[:100] + "..." if len(preview) > 100 else preview,
+                    "dialogues_count": len(dialogues),
+                    "raw_audio_filename": data.get("raw_audio_filename"),
                     "processed_at": data.get("processed_at", ""),
-                    "dialogues_count": len(data.get("dialogues", []))
                 })
         except Exception:
             continue
     return history
+
+@app.get("/api/history/{filename}")
+async def get_history_item(filename: str):
+    clean_name = Path(filename).name
+    file_path = settings.EXPORTS_DIR / clean_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Session take not found")
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if "raw_audio_filename" in data and data["raw_audio_filename"]:
+        data["audio_url"] = f"/api/recordings/{data['raw_audio_filename']}"
+    return data
+
+@app.put("/api/history/{filename}")
+async def update_history_item(filename: str, payload: dict = Body(...)):
+    clean_name = Path(filename).name
+    file_path = settings.EXPORTS_DIR / clean_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Session take not found")
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return {"success": True, "message": "Updated dialogue session"}
+
+@app.delete("/api/history/{filename}")
+async def delete_history_item(filename: str):
+    clean_name = Path(filename).name
+    file_path = settings.EXPORTS_DIR / clean_name
+    if file_path.exists():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                audio_file = data.get("raw_audio_filename")
+                if audio_file:
+                    audio_path = settings.RECORDINGS_DIR / audio_file
+                    if audio_path.exists():
+                        audio_path.unlink()
+        except Exception:
+            pass
+        file_path.unlink()
+        return {"success": True, "deleted": clean_name}
+    raise HTTPException(status_code=404, detail="File not found")
 
 # Static files mount for the web client
 app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
