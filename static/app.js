@@ -1,10 +1,9 @@
 /**
- * ARC SCRIBE • Client Application Engine
- * Mobile-First Audio Recording, Sibling Calibration & Gemini AI Scribe
+ * ARC SCRIBE • Pure Voice Instrument Engine (v4.0.0)
+ * Single Action Focus: Record ➔ Stop ➔ Analyze ➔ Raw Dialogue Script
  */
 
-// State Management
-const AppState = {
+const InstrumentState = {
   isRecording: false,
   isPaused: false,
   mediaRecorder: null,
@@ -13,133 +12,125 @@ const AppState = {
   analyserNode: null,
   animationFrameId: null,
   recordedChunks: [],
+  currentAudioBlob: null,
   recordingStartTime: 0,
   timerInterval: null,
   wakeLock: null,
-  activeTab: 'scriptTab',
-  speaker1Calibrated: false,
-  speaker2Calibrated: false,
+  dialogueData: []
 };
 
-// IndexedDB Local-First Persistence
-const DB_NAME = 'ArcScribeDB';
-const DB_VERSION = 1;
-let db = null;
-
-function initIndexedDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = (e) => {
-      const database = e.target.result;
-      if (!database.objectStoreNames.contains('recordings')) {
-        database.createObjectStore('recordings', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    request.onsuccess = (e) => {
-      db = e.target.result;
-      resolve(db);
-    };
-    request.onerror = (e) => reject(e);
-  });
-}
-
-async function saveChunkLocally(blob) {
-  if (!db) return;
-  const tx = db.transaction(['recordings'], 'readwrite');
-  const store = tx.objectStore('recordings');
-  store.add({ timestamp: Date.now(), chunk: blob });
-}
-
-// Mobile Screen WakeLock API
-async function requestWakeLock() {
-  if ('wakeLock' in navigator) {
-    try {
-      AppState.wakeLock = await navigator.wakeLock.request('screen');
-      const shield = document.getElementById('wakeShield');
-      const text = document.getElementById('wakeText');
-      if (shield) shield.classList.add('active');
-      if (text) text.textContent = 'Screen Awake (Active)';
-      
-      AppState.wakeLock.addEventListener('release', () => {
-        if (shield) shield.classList.remove('active');
-        if (text) text.textContent = 'WakeLock Released';
-      });
-    } catch (err) {
-      console.warn('Wake Lock request failed:', err);
-    }
-  }
-}
-
-function releaseWakeLock() {
-  if (AppState.wakeLock) {
-    AppState.wakeLock.release().catch(() => {});
-    AppState.wakeLock = null;
-  }
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && AppState.isRecording) {
-    requestWakeLock();
-  }
-});
-
-// Canvas Audio Visualizer
-function initVisualizer(stream) {
+// Canvas Multi-Band Waveform Ribbon Visualizer
+function initWaveformVisualizer(stream) {
   const canvas = document.getElementById('waveformCanvas');
   const canvasCtx = canvas.getContext('2d');
   
-  if (!AppState.audioContext) {
-    AppState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  
-  if (AppState.audioContext.state === 'suspended') {
-    AppState.audioContext.resume();
-  }
-  
-  const source = AppState.audioContext.createMediaStreamSource(stream);
-  AppState.analyserNode = AppState.audioContext.createAnalyser();
-  AppState.analyserNode.fftSize = 128;
-  source.connect(AppState.analyserNode);
+  // Set real canvas pixel resolution
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio || 720;
+  canvas.height = rect.height * window.devicePixelRatio || 180;
 
-  const bufferLength = AppState.analyserNode.frequencyBinCount;
+  if (!InstrumentState.audioContext) {
+    InstrumentState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (InstrumentState.audioContext.state === 'suspended') {
+    InstrumentState.audioContext.resume();
+  }
+
+  const source = InstrumentState.audioContext.createMediaStreamSource(stream);
+  InstrumentState.analyserNode = InstrumentState.audioContext.createAnalyser();
+  InstrumentState.analyserNode.fftSize = 128;
+  InstrumentState.analyserNode.smoothingTimeConstant = 0.8;
+  source.connect(InstrumentState.analyserNode);
+
+  const bufferLength = InstrumentState.analyserNode.frequencyBinCount;
   const dataArray = new Uint8Array(bufferLength);
 
-  function draw() {
-    AppState.animationFrameId = requestAnimationFrame(draw);
-    AppState.analyserNode.getByteFrequencyData(dataArray);
+  function renderWaveform() {
+    InstrumentState.animationFrameId = requestAnimationFrame(renderWaveform);
+    InstrumentState.analyserNode.getByteFrequencyData(dataArray);
 
     canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const barWidth = (canvas.width / bufferLength) * 1.6;
+    const barWidth = (canvas.width / bufferLength) * 1.8;
     let x = 0;
+    const centerY = canvas.height / 2;
 
     for (let i = 0; i < bufferLength; i++) {
-      const barHeight = (dataArray[i] / 255) * (canvas.height * 0.75);
+      const val = dataArray[i] / 255;
+      const barHeight = val * (canvas.height * 0.42);
 
-      // Mathematical High-Contrast Color: Theatrical Amber for lower half, Amethyst for peaks
-      canvasCtx.fillStyle = (i % 2 === 0) ? '#F59E0B' : '#A78BFA';
-      canvasCtx.fillRect(x, canvas.height - barHeight, barWidth - 3, barHeight);
+      // Multi-band color blending: Speaker 1 Amber & Speaker 2 Amethyst
+      const gradient = canvasCtx.createLinearGradient(0, centerY - barHeight, 0, centerY + barHeight);
+      if (i < bufferLength / 2) {
+        gradient.addColorStop(0, '#F59E0B');
+        gradient.addColorStop(1, 'rgba(245, 158, 11, 0.2)');
+      } else {
+        gradient.addColorStop(0, '#A78BFA');
+        gradient.addColorStop(1, 'rgba(167, 139, 250, 0.2)');
+      }
 
+      canvasCtx.fillStyle = gradient;
+      
+      // Mirror reflection ribbon around center Y
+      canvasCtx.fillRect(x, centerY - barHeight, barWidth - 4, barHeight * 2 || 2);
       x += barWidth;
     }
   }
 
-  draw();
+  renderWaveform();
 }
 
-function stopVisualizer() {
-  if (AppState.animationFrameId) {
-    cancelAnimationFrame(AppState.animationFrameId);
+function stopWaveformVisualizer() {
+  if (InstrumentState.animationFrameId) {
+    cancelAnimationFrame(InstrumentState.animationFrameId);
   }
   const canvas = document.getElementById('waveformCanvas');
-  const canvasCtx = canvas.getContext('2d');
-  canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+  if (canvas) {
+    const canvasCtx = canvas.getContext('2d');
+    canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
-// Audio Recording Lifecycle
+// Mobile Screen WakeLock API
+async function requestScreenWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      InstrumentState.wakeLock = await navigator.wakeLock.request('screen');
+    } catch (err) {
+      console.warn('Wake Lock request warning:', err);
+    }
+  }
+}
+
+function releaseScreenWakeLock() {
+  if (InstrumentState.wakeLock) {
+    InstrumentState.wakeLock.release().catch(() => {});
+    InstrumentState.wakeLock = null;
+  }
+}
+
+// Timer Logic
+function startTimer() {
+  clearInterval(InstrumentState.timerInterval);
+  InstrumentState.timerInterval = setInterval(() => {
+    if (!InstrumentState.isPaused) {
+      const elapsedSec = Math.floor((Date.now() - InstrumentState.recordingStartTime) / 1000);
+      const minutes = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+      const seconds = String(elapsedSec % 60).padStart(2, '0');
+      document.getElementById('timerDisplay').textContent = `${minutes}:${seconds}`;
+    }
+  }, 500);
+}
+
+function resetTimer() {
+  clearInterval(InstrumentState.timerInterval);
+  document.getElementById('timerDisplay').textContent = '00:00';
+}
+
+// Recording State Machine
 async function startRecording() {
   try {
-    const audioConstraints = {
+    const constraints = {
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
@@ -148,442 +139,250 @@ async function startRecording() {
       }
     };
 
-    AppState.audioStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
-    initVisualizer(AppState.audioStream);
-    await requestWakeLock();
+    InstrumentState.audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+    initWaveformVisualizer(InstrumentState.audioStream);
+    await requestScreenWakeLock();
 
-    // Codec detection
     let mimeType = 'audio/webm;codecs=opus';
     if (!MediaRecorder.isTypeSupported(mimeType)) {
-      if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        mimeType = 'audio/mp4';
-      } else {
-        mimeType = '';
-      }
+      mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
     }
 
-    AppState.recordedChunks = [];
-    AppState.mediaRecorder = mimeType ? new MediaRecorder(AppState.audioStream, { mimeType }) : new MediaRecorder(AppState.audioStream);
+    InstrumentState.recordedChunks = [];
+    InstrumentState.mediaRecorder = mimeType 
+      ? new MediaRecorder(InstrumentState.audioStream, { mimeType }) 
+      : new MediaRecorder(InstrumentState.audioStream);
 
-    AppState.mediaRecorder.ondataavailable = async (e) => {
+    InstrumentState.mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
-        AppState.recordedChunks.push(e.data);
-        await saveChunkLocally(e.data);
+        InstrumentState.recordedChunks.push(e.data);
       }
     };
 
-    // Slices audio every 10s for local resilience
-    AppState.mediaRecorder.start(10000);
-    AppState.isRecording = true;
-    AppState.isPaused = false;
-    AppState.recordingStartTime = Date.now();
+    InstrumentState.mediaRecorder.start(1000); // 1-second slices
+    InstrumentState.isRecording = true;
+    InstrumentState.isPaused = false;
+    InstrumentState.recordingStartTime = Date.now();
 
     startTimer();
-    updateControlsUI();
+
+    // UI Updates
+    document.getElementById('recordingSection').classList.add('recording-live');
+    document.getElementById('recordTriggerWrap').style.display = 'none';
+    document.getElementById('activeControls').style.display = 'flex';
+    document.getElementById('analyzeStation').style.display = 'none';
+    document.getElementById('processingState').style.display = 'none';
+    document.getElementById('statePill').textContent = 'RECORDING LIVE';
   } catch (err) {
-    console.error('Error starting recording:', err);
-    alert('Microphone access denied or audio recording failed: ' + err.message);
+    console.error('Microphone access failed:', err);
+    alert('Microphone permission required to record: ' + err.message);
   }
 }
 
 function pauseRecording() {
-  if (AppState.mediaRecorder && AppState.isRecording) {
-    if (!AppState.isPaused) {
-      AppState.mediaRecorder.pause();
-      AppState.isPaused = true;
-      document.getElementById('recordingState').textContent = 'Paused • Improv on Hold';
-      document.getElementById('pauseBtn').querySelector('.btn-label').textContent = 'Resume';
-    } else {
-      AppState.mediaRecorder.resume();
-      AppState.isPaused = false;
-      document.getElementById('recordingState').textContent = 'Recording • Acting Live';
-      document.getElementById('pauseBtn').querySelector('.btn-label').textContent = 'Pause';
-    }
+  if (!InstrumentState.mediaRecorder || !InstrumentState.isRecording) return;
+
+  if (!InstrumentState.isPaused) {
+    InstrumentState.mediaRecorder.pause();
+    InstrumentState.isPaused = true;
+    document.getElementById('pauseIcon').textContent = '▶';
+    document.getElementById('pauseLabel').textContent = 'RESUME';
+    document.getElementById('statePill').textContent = 'PAUSED';
+  } else {
+    InstrumentState.mediaRecorder.resume();
+    InstrumentState.isPaused = false;
+    document.getElementById('pauseIcon').textContent = '⏸';
+    document.getElementById('pauseLabel').textContent = 'PAUSE';
+    document.getElementById('statePill').textContent = 'RECORDING LIVE';
   }
 }
 
-async function finishAndScribe() {
-  if (!AppState.mediaRecorder) return;
+function stopRecording() {
+  if (!InstrumentState.mediaRecorder) return;
 
-  AppState.isRecording = false;
-  clearInterval(AppState.timerInterval);
-  releaseWakeLock();
-  stopVisualizer();
-
-  document.getElementById('recordingState').textContent = 'Finalizing Audio...';
-
-  AppState.mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(AppState.recordedChunks, { type: AppState.mediaRecorder.mimeType || 'audio/webm' });
-    if (AppState.audioStream) {
-      AppState.audioStream.getTracks().forEach(track => track.stop());
+  InstrumentState.mediaRecorder.onstop = () => {
+    const mime = InstrumentState.mediaRecorder.mimeType || 'audio/webm';
+    InstrumentState.currentAudioBlob = new Blob(InstrumentState.recordedChunks, { type: mime });
+    
+    // Stop mic stream & visualizer
+    if (InstrumentState.audioStream) {
+      InstrumentState.audioStream.getTracks().forEach(t => t.stop());
     }
+    stopWaveformVisualizer();
+    releaseScreenWakeLock();
+    clearInterval(InstrumentState.timerInterval);
 
-    updateControlsUI();
-    await sendAudioToGemini(audioBlob);
+    // UI to Analyze Ready
+    document.getElementById('recordingSection').classList.remove('recording-live');
+    document.getElementById('activeControls').style.display = 'none';
+    document.getElementById('analyzeStation').style.display = 'flex';
+    document.getElementById('statePill').textContent = 'AUDIO CAPTURED • READY TO ANALYZE';
   };
 
-  AppState.mediaRecorder.stop();
+  InstrumentState.mediaRecorder.stop();
+  InstrumentState.isRecording = false;
 }
 
-// Timer
-function startTimer() {
-  const timerDisplay = document.getElementById('recordingTimer');
-  AppState.timerInterval = setInterval(() => {
-    if (!AppState.isPaused) {
-      const elapsed = Math.floor((Date.now() - AppState.recordingStartTime) / 1000);
-      const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
-      const secs = String(elapsed % 60).padStart(2, '0');
-      timerDisplay.textContent = `${mins}:${secs}`;
-    }
-  }, 500);
+function discardAndReset() {
+  InstrumentState.currentAudioBlob = null;
+  InstrumentState.recordedChunks = [];
+  resetTimer();
+  document.getElementById('analyzeStation').style.display = 'none';
+  document.getElementById('recordTriggerWrap').style.display = 'flex';
+  document.getElementById('statePill').textContent = 'TAP TO RECORD';
 }
 
-// UI State Toggles
-function updateControlsUI() {
-  const recordBtn = document.getElementById('recordBtn');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const finishBtn = document.getElementById('finishBtn');
-  const stateTag = document.getElementById('recordingState');
+// AI Dialogue Analysis Trigger
+async function analyzeDialogue() {
+  if (!InstrumentState.currentAudioBlob) return;
 
-  if (AppState.isRecording) {
-    recordBtn.disabled = true;
-    recordBtn.classList.add('recording');
-    pauseBtn.disabled = false;
-    finishBtn.disabled = false;
-    stateTag.textContent = 'Recording • Acting Live';
-  } else {
-    recordBtn.disabled = false;
-    recordBtn.classList.remove('recording');
-    pauseBtn.disabled = true;
-    finishBtn.disabled = true;
-    stateTag.textContent = 'Standby • Ready to Enact';
-    document.getElementById('recordingTimer').textContent = '00:00';
-  }
-}
-
-// Gemini Audio Processing API
-async function sendAudioToGemini(audioBlob) {
-  const banner = document.getElementById('processingBanner');
-  const bannerStep = document.getElementById('processingStep');
-  banner.style.display = 'flex';
-  bannerStep.textContent = 'Gemini 3.5 Flash Lite is Scribing...';
+  document.getElementById('analyzeStation').style.display = 'none';
+  document.getElementById('processingState').style.display = 'flex';
+  document.getElementById('statePill').textContent = 'AI ANALYZING...';
 
   const formData = new FormData();
-  formData.append('audio', audioBlob, 'enactment_scene.webm');
-  formData.append('arc_title', document.getElementById('arcTitleInput').value.trim() || 'Untitled Arc');
-  formData.append('scene_context', document.getElementById('sceneContextInput').value.trim());
-
-  // Dynamic speaker & character values (No hardcoded names!)
-  formData.append('speaker_1_name', document.getElementById('spk1Name').value.trim() || 'Author 1');
-  formData.append('speaker_1_char', document.getElementById('spk1Char').value.trim() || 'Character A');
-  formData.append('speaker_1_notes', document.getElementById('spk1Notes').value.trim());
-
-  formData.append('speaker_2_name', document.getElementById('spk2Name').value.trim() || 'Author 2');
-  formData.append('speaker_2_char', document.getElementById('spk2Char').value.trim() || 'Character B');
-  formData.append('speaker_2_notes', document.getElementById('spk2Notes').value.trim());
+  formData.append('audio', InstrumentState.currentAudioBlob, 'dialogue_enactment.webm');
+  formData.append('arc_title', 'Raw Voice Session');
+  formData.append('speaker_1_name', 'Speaker 1');
+  formData.append('speaker_1_char', 'Speaker 1');
+  formData.append('speaker_2_name', 'Speaker 2');
+  formData.append('speaker_2_char', 'Speaker 2');
 
   try {
     const response = await fetch('/api/process-audio', {
       method: 'POST',
-      body: formData
+      body: formData,
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.detail || `Server returned HTTP ${response.status}`);
+      const err = await response.json();
+      throw new Error(err.detail || 'Analysis failed');
     }
 
     const data = await response.json();
-    renderResults(data);
+    renderScriptResults(data);
   } catch (err) {
-    console.error('Processing error:', err);
-    alert('Audio processing failed: ' + err.message);
-  } finally {
-    banner.style.display = 'none';
+    console.error('Analysis error:', err);
+    alert('Analysis failed: ' + err.message + '\n\nPlease verify your GEMINI_API_KEY in arc-scribe/.env.');
+    document.getElementById('processingState').style.display = 'none';
+    document.getElementById('analyzeStation').style.display = 'flex';
+    document.getElementById('statePill').textContent = 'READY TO ANALYZE';
   }
 }
 
-// Render Results to Output Studio
-function renderResults(data) {
-  // 1. Render Screenplay
-  const scriptContainer = document.getElementById('scriptContainer');
-  const dialogueCount = document.getElementById('dialogueCount');
-  scriptContainer.innerHTML = '';
+// Render Results into Screen 2
+function renderScriptResults(data) {
+  document.getElementById('recordingSection').style.display = 'none';
+  document.getElementById('scriptSection').style.display = 'flex';
 
-  const dialogues = data.dialogues || [];
-  dialogueCount.textContent = dialogues.length;
+  const stream = document.getElementById('scriptStream');
+  stream.innerHTML = '';
+
+  const dialogues = data.dialogue_script || [];
+  InstrumentState.dialogueData = dialogues;
 
   if (dialogues.length === 0) {
-    scriptContainer.innerHTML = '<div class="empty-state"><p>No dialogue lines detected in audio take.</p></div>';
-  } else {
-    dialogues.forEach(turn => {
-      const turnEl = document.createElement('div');
-      turnEl.className = 'dialogue-turn';
-
-      let cuesHtml = '';
-      if (turn.vocal_tone) {
-        cuesHtml += `<span class="cue-chip">${escapeHtml(turn.vocal_tone)}</span>`;
-      }
-      if (turn.physical_cue) {
-        cuesHtml += `<span class="cue-chip cue-action">${escapeHtml(turn.physical_cue)}</span>`;
-      }
-
-      turnEl.innerHTML = `
-        <div class="turn-header">
-          <div class="turn-speaker-group">
-            <span class="turn-character-name">${escapeHtml(turn.character)}</span>
-            <span class="turn-speaker-name">(${escapeHtml(turn.speaker)})</span>
-          </div>
-          ${turn.timestamp ? `<span class="turn-timestamp">${escapeHtml(turn.timestamp)}</span>` : ''}
-        </div>
-        ${cuesHtml ? `<div class="turn-cues">${cuesHtml}</div>` : ''}
-        <div class="turn-dialogue-text">${escapeHtml(turn.dialogue)}</div>
-      `;
-      scriptContainer.appendChild(turnEl);
-    });
+    stream.innerHTML = '<div class="script-card"><p>No clear dialogue lines detected in audio.</p></div>';
+    return;
   }
 
-  // 2. Render Novel Prose Draft
-  const proseContainer = document.getElementById('proseContainer');
-  proseContainer.innerHTML = '';
-  if (data.novel_prose_draft) {
-    const proseEl = document.createElement('div');
-    proseEl.className = 'prose-content';
-    proseEl.textContent = data.novel_prose_draft;
-    proseContainer.appendChild(proseEl);
-  } else {
-    proseContainer.innerHTML = '<div class="empty-state"><p>No novel prose draft available.</p></div>';
-  }
+  dialogues.forEach((item, index) => {
+    const card = document.createElement('div');
+    const isSpeaker1 = (item.speaker_id === 'speaker_1' || (item.speaker || '').toLowerCase().includes('speaker 1') || (item.speaker || '').toLowerCase().includes('author 1'));
+    card.className = `script-card ${isSpeaker1 ? 'speaker-1' : 'speaker-2'}`;
 
-  // 3. Render Scene Beats
-  const beatsContainer = document.getElementById('beatsContainer');
-  beatsContainer.innerHTML = '';
-  const beats = data.scene_beats || [];
-  if (beats.length === 0) {
-    beatsContainer.innerHTML = '<div class="empty-state"><p>No scene beats generated.</p></div>';
-  } else {
-    beats.forEach(beat => {
-      const beatEl = document.createElement('div');
-      beatEl.className = 'beat-card';
-      const tension = beat.dramatic_tension || 'Medium';
-      beatEl.innerHTML = `
-        <div class="beat-header">
-          <span class="beat-title">Beat ${beat.beat_number}: ${escapeHtml(beat.title)}</span>
-          <span class="tension-pill tension-${tension}">${tension}</span>
-        </div>
-        <div class="turn-dialogue-text">${escapeHtml(beat.description)}</div>
-      `;
-      beatsContainer.appendChild(beatEl);
-    });
-  }
-}
+    const toneText = item.vocal_tone ? `[${item.vocal_tone}]` : '';
+    const timeText = item.timestamp ? item.timestamp : '';
 
-// 15-Second Guided Voice Calibration
-let calRecorder = null;
-let calChunks = [];
-let calTimer = null;
+    card.innerHTML = `
+      <div class="script-card-header">
+        <span class="speaker-pill">${escapeHtml(item.speaker || (isSpeaker1 ? 'Speaker 1' : 'Speaker 2'))}</span>
+        <span class="tone-badge">${escapeHtml(toneText)} ${timeText}</span>
+      </div>
+      <div class="script-line">${escapeHtml(item.text || '')}</div>
+    `;
 
-function setupCalibration(speakerId, buttonId, timerId, statusId) {
-  const btn = document.getElementById(buttonId);
-  const timer = document.getElementById(timerId);
-  const status = document.getElementById(statusId);
-
-  btn.addEventListener('click', async () => {
-    if (btn.classList.contains('recording')) return;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      calChunks = [];
-      calRecorder = new MediaRecorder(stream);
-      calRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) calChunks.push(e.data);
-      };
-
-      calRecorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(calChunks, { type: 'audio/webm' });
-        
-        btn.classList.remove('recording');
-        btn.innerHTML = '⚡ Uploading...';
-
-        const speakerNameInput = speakerId === 'speaker_1' ? document.getElementById('spk1Name') : document.getElementById('spk2Name');
-        const speakerName = speakerNameInput ? speakerNameInput.value.trim() : speakerId;
-
-        const formData = new FormData();
-        formData.append('speaker_id', speakerId);
-        formData.append('speaker_name', speakerName);
-        formData.append('audio', blob, `${speakerId}_calibration.webm`);
-
-        try {
-          const res = await fetch('/api/calibrate-voice', { method: 'POST', body: formData });
-          if (res.ok) {
-            status.textContent = 'Enrolled ✓';
-            status.classList.add('enrolled');
-            btn.innerHTML = '✓ Re-record Sample';
-            checkServerStatus();
-          } else {
-            btn.innerHTML = '● Record 15s Sample';
-            alert('Calibration upload failed');
-          }
-        } catch (e) {
-          btn.innerHTML = '● Record 15s Sample';
-          alert('Calibration error: ' + e.message);
-        }
-      };
-
-      calRecorder.start();
-      btn.classList.add('recording');
-      btn.innerHTML = '⏹ Recording Voice...';
-
-      let secondsLeft = 15;
-      timer.textContent = `0:00 / 0:15`;
-
-      calTimer = setInterval(() => {
-        secondsLeft--;
-        const elapsed = 15 - secondsLeft;
-        timer.textContent = `0:${String(elapsed).padStart(2, '0')} / 0:15`;
-
-        if (secondsLeft <= 0) {
-          clearInterval(calTimer);
-          if (calRecorder && calRecorder.state === 'recording') {
-            calRecorder.stop();
-          }
-        }
-      }, 1000);
-
-    } catch (err) {
-      alert('Microphone access failed: ' + err.message);
-    }
+    stream.appendChild(card);
   });
 }
 
-// Check Server Status
-async function checkServerStatus() {
-  try {
-    const res = await fetch('/api/status');
-    if (!res.ok) return;
-    const data = await res.json();
+function returnToRecordNext() {
+  InstrumentState.currentAudioBlob = null;
+  InstrumentState.recordedChunks = [];
+  resetTimer();
 
-    const modelBadge = document.getElementById('modelBadge');
-    if (modelBadge && data.model) {
-      modelBadge.textContent = data.model;
-    }
-
-    const vaultIndicator = document.getElementById('vaultIndicator');
-    if (vaultIndicator && (data.speaker_1_calibrated || data.speaker_2_calibrated)) {
-      vaultIndicator.classList.add('calibrated');
-    }
-
-    const cal1Status = document.getElementById('calSpk1Status');
-    const cal2Status = document.getElementById('calSpk2Status');
-    if (cal1Status && data.speaker_1_calibrated) {
-      cal1Status.textContent = 'Enrolled ✓';
-      cal1Status.classList.add('enrolled');
-    }
-    if (cal2Status && data.speaker_2_calibrated) {
-      cal2Status.textContent = 'Enrolled ✓';
-      cal2Status.classList.add('enrolled');
-    }
-  } catch (e) {
-    console.warn('Status check failed:', e);
-  }
+  document.getElementById('scriptSection').style.display = 'none';
+  document.getElementById('recordingSection').style.display = 'flex';
+  document.getElementById('processingState').style.display = 'none';
+  document.getElementById('analyzeStation').style.display = 'none';
+  document.getElementById('activeControls').style.display = 'none';
+  document.getElementById('recordTriggerWrap').style.display = 'flex';
+  document.getElementById('statePill').textContent = 'TAP TO RECORD';
 }
 
-// Fetch Mobile LAN URL
-async function fetchMobileUrl() {
+function copyRawScriptToClipboard() {
+  if (!InstrumentState.dialogueData || InstrumentState.dialogueData.length === 0) return;
+
+  const textLines = InstrumentState.dialogueData.map(d => {
+    const tone = d.vocal_tone ? ` [${d.vocal_tone}]` : '';
+    return `${d.speaker || 'Speaker'}${tone}: ${d.text || ''}`;
+  }).join('\n\n');
+
+  navigator.clipboard.writeText(textLines).then(() => {
+    const btn = document.getElementById('copyScriptBtn');
+    btn.innerHTML = '<span>✓ Copied!</span>';
+    setTimeout(() => {
+      btn.innerHTML = '<span>📋 Copy Script</span>';
+    }, 2000);
+  });
+}
+
+// Utility
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Network / Mobile Link
+async function checkNetworkInfo() {
   try {
     const res = await fetch('/api/network-ip');
     if (res.ok) {
       const data = await res.json();
-      const ipText = document.getElementById('networkIpText');
-      const modalUrl = document.getElementById('modalMobileUrl');
-      if (ipText) ipText.textContent = `${data.local_ip}:${data.port}`;
-      if (modalUrl) modalUrl.textContent = data.mobile_url;
+      document.getElementById('modalMobileUrl').textContent = data.mobile_url;
+      document.getElementById('networkIpText').textContent = data.local_ip;
     }
   } catch (e) {
-    console.warn('Network IP check failed:', e);
+    console.warn('Network IP fetch error:', e);
   }
 }
 
-// Clipboard Helpers
-function copyToClipboard(text, btnElement, successMsg) {
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
-    const originalText = btnElement.textContent;
-    btnElement.textContent = successMsg;
-    setTimeout(() => btnElement.textContent = originalText, 2000);
+// Event Bindings
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('startRecordBtn').addEventListener('click', startRecording);
+  document.getElementById('pauseRecordBtn').addEventListener('click', pauseRecording);
+  document.getElementById('stopRecordBtn').addEventListener('click', stopRecording);
+  document.getElementById('discardBtn').addEventListener('click', discardAndReset);
+  document.getElementById('analyzeBtn').addEventListener('click', analyzeDialogue);
+  document.getElementById('recordNextBtn').addEventListener('click', returnToRecordNext);
+  document.getElementById('copyScriptBtn').addEventListener('click', copyRawScriptToClipboard);
+
+  // Network modal
+  const networkModal = document.getElementById('networkModal');
+  document.getElementById('networkShareBtn').addEventListener('click', () => {
+    networkModal.style.display = 'flex';
   });
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// Initialization & Event Listeners
-document.addEventListener('DOMContentLoaded', async () => {
-  await initIndexedDB();
-  checkServerStatus();
-  fetchMobileUrl();
-
-  // Recording Controls
-  document.getElementById('recordBtn').addEventListener('click', startRecording);
-  document.getElementById('pauseBtn').addEventListener('click', pauseRecording);
-  document.getElementById('finishBtn').addEventListener('click', finishAndScribe);
-
-  // Tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-      btn.classList.add('active');
-      const tabId = btn.getAttribute('data-tab');
-      document.getElementById(tabId).classList.add('active');
-    });
+  document.getElementById('closeNetworkModalBtn').addEventListener('click', () => {
+    networkModal.style.display = 'none';
   });
-
-  // Modals
-  const calModal = document.getElementById('calibrationModal');
-  document.getElementById('calibrationVaultBtn').addEventListener('click', () => {
-    // Sync speaker names to badges
-    document.getElementById('calSpk1Badge').textContent = document.getElementById('spk1Name').value.trim() || 'SPEAKER 1';
-    document.getElementById('calSpk2Badge').textContent = document.getElementById('spk2Name').value.trim() || 'SPEAKER 2';
-    calModal.style.display = 'flex';
-  });
-  document.getElementById('closeModalBtn').addEventListener('click', () => calModal.style.display = 'none');
-
-  const netModal = document.getElementById('networkModal');
-  document.getElementById('networkShareBtn').addEventListener('click', () => netModal.style.display = 'flex');
-  document.getElementById('closeNetworkModalBtn').addEventListener('click', () => netModal.style.display = 'none');
-
-  document.getElementById('copyUrlBtn').addEventListener('click', (e) => {
+  document.getElementById('copyUrlBtn').addEventListener('click', () => {
     const url = document.getElementById('modalMobileUrl').textContent;
-    copyToClipboard(url, e.target, '✓ Copied URL!');
+    navigator.clipboard.writeText(url);
+    const btn = document.getElementById('copyUrlBtn');
+    btn.textContent = '✓ Copied Link!';
+    setTimeout(() => btn.textContent = '📋 Copy Link', 2000);
   });
 
-  // Copy Buttons for Studio
-  document.getElementById('copyScriptBtn').addEventListener('click', (e) => {
-    const text = Array.from(document.querySelectorAll('.dialogue-turn')).map(el => {
-      const char = el.querySelector('.turn-character-name')?.textContent || '';
-      const spk = el.querySelector('.turn-speaker-name')?.textContent || '';
-      const dialogue = el.querySelector('.turn-dialogue-text')?.textContent || '';
-      return `${char} ${spk}: "${dialogue}"`;
-    }).join('\n\n');
-    copyToClipboard(text, e.target, '✓ Script Copied!');
-  });
-
-  document.getElementById('copyProseBtn').addEventListener('click', (e) => {
-    const text = document.querySelector('.prose-content')?.textContent || '';
-    copyToClipboard(text, e.target, '✓ Prose Copied!');
-  });
-
-  document.getElementById('copyBeatsBtn').addEventListener('click', (e) => {
-    const text = Array.from(document.querySelectorAll('.beat-card')).map(el => el.textContent.trim()).join('\n\n');
-    copyToClipboard(text, e.target, '✓ Beats Copied!');
-  });
-
-  // Calibration Recorders
-  setupCalibration('speaker_1', 'calRecBtn1', 'calTimer1', 'calSpk1Status');
-  setupCalibration('speaker_2', 'calRecBtn2', 'calTimer2', 'calSpk2Status');
+  checkNetworkInfo();
 });
