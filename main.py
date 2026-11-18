@@ -28,6 +28,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Prevent aggressive browser caching of static files (especially on mobile browsers)
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static") or request.url.path == "/":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 def get_local_ip() -> str:
     """Detects the primary local LAN IP address for easy mobile Wi-Fi connection."""
     try:
@@ -182,7 +192,14 @@ app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="stat
 
 @app.get("/")
 async def serve_index():
-    return FileResponse(settings.STATIC_DIR / "index.html")
+    return FileResponse(
+        settings.STATIC_DIR / "index.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+    )
 
 if __name__ == "__main__":
     import uvicorn
