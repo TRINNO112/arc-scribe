@@ -1,0 +1,17 @@
+{
+  "name": "arc-scribe",
+  "version": "1.0.0",
+  "description": "Novel Enactment & Sibling Voice Diarization Studio",
+  "scripts": {
+    "dev": "run.bat",
+    "start": "run.bat"
+  },
+  "keywords": [
+    "web-novel",
+    "audio-diarization",
+    "gemini",
+    "enactment"
+  ],
+  "author": "",
+  "license": "MIT"
+}
